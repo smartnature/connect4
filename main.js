@@ -5,7 +5,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const board = document.querySelector(".board");
   createBoard(board);
   // Open the WebSocket connection and register event handlers.
-  const websocket = new WebSocket("ws://localhost:8001/");
+  const websocket = new WebSocket(getWebSocketServer());
   initGame(websocket);
   receiveMoves(board, websocket);
   sendMoves(board, websocket);
@@ -76,4 +76,15 @@ function receiveMoves(board, websocket) {
         throw new Error(`Unsupported event type: ${event.type}.`);
     }
   });
+}
+
+
+function getWebSocketServer() {
+  if (window.location.host === "smartnature.github.io") {
+    return "wss://websocket-tutorial-smartine.herokuapp.com/";
+  } else if (window.location.host === "localhost:8000") {
+    return "ws://localhost:8001/";
+  } else {
+    throw new Error(`Unsupported host: ${window.location.host}`);
+  }
 }
