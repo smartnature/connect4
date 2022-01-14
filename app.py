@@ -1,17 +1,18 @@
 #!/usr/bin/env python
 
 import asyncio
-import itertools
 import websockets
 import json
 from connect4 import PLAYER1, PLAYER2, Connect4
 import secrets
 import os
 import signal
+import watchdog
 
 
 JOIN = {}
 WATCH = {}
+DELETE_TIMERS = {}
 
 async def start(websocket):
     # Initialize a Connect Four game, the set of WebSocket connections
@@ -23,6 +24,7 @@ async def start(websocket):
 
     join_key = secrets.token_urlsafe(12)
     watch_key = secrets.token_urlsafe(12)
+
     JOIN[join_key] = game, connected
     WATCH[watch_key] = game, connected
 
@@ -45,9 +47,19 @@ async def start(websocket):
         print(f"An exception occurred: {e}")
 
     finally:
-        print (f"Deleting JOIN[join_key], where join_key value is {join_key}")
-        del WATCH[watch_key]
-        del JOIN[join_key]
+        print (f"Setting timer to delete JOIN[join_key], where join_key value is {join_key}")
+        # Do not delete it right away to get a chance to reconnect.
+        DELETE_TIMERS[join_key] = \
+            watchdog(timeout = 30, userHandler = lambda join_key = join_key,
+                                                        watch_key = watch_key : cleanupClosedSocket(join_key, watch_key))
+
+
+async def cleanupClosedSocket(join_key, watch_key):
+    print (f"Deleting JOIN[join_key], where join_key value is {join_key}")
+    del WATCH[watch_key]
+    del JOIN[join_key]
+    del DELETE_TIMERS[join_key]
+
 
 
 async def replay(websocket, game):
