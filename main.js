@@ -1,5 +1,8 @@
 import { createBoard, playMove } from "./connect4.js";
 
+let gameId = "";
+let player = "";
+
 window.addEventListener("DOMContentLoaded", () => {
   // Initialize the UI.
   const board = document.querySelector(".board");
@@ -20,6 +23,8 @@ function initGame(websocket) {
     if (params.has("join")) {
       // Second player joins an existing game.
       event.join = params.get("join");
+      document.querySelector(".join").href = "?join=" + params.get("join");
+      player = "yellow"
     } else if (params.has("watch")) {
       event.watch = params.get("watch");
     } else {
@@ -41,6 +46,8 @@ function sendMoves(board, websocket) {
     const event = {
       type: "play",
       column: parseInt(column, 10),
+      gameId: gameId,
+      player: player
     };
     websocket.send(JSON.stringify(event));
   });
@@ -58,6 +65,8 @@ function receiveMoves(board, websocket) {
         // Create link for inviting the second player.
         document.querySelector(".join").href = "?join=" + event.join;
         document.querySelector(".watch").href = "?watch=" + event.watch;
+        gameId = event.join;
+        player = "red";
         break;
       case "play":
         // Update the UI with the move.

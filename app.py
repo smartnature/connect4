@@ -50,11 +50,11 @@ async def start(websocket):
         print (f"Setting timer to delete JOIN[join_key], where join_key value is {join_key}")
         # Do not delete it right away to get a chance to reconnect.
         DELETE_TIMERS[join_key] = \
-            watchdog(timeout = 30, userHandler = lambda join_key = join_key,
+            watchdog.Watchdog(timeout = 15*60, userHandler = lambda join_key = join_key,
                                                         watch_key = watch_key : cleanupClosedSocket(join_key, watch_key))
 
 
-async def cleanupClosedSocket(join_key, watch_key):
+def cleanupClosedSocket(join_key, watch_key):
     print (f"Deleting JOIN[join_key], where join_key value is {join_key}")
     del WATCH[watch_key]
     del JOIN[join_key]
@@ -126,7 +126,7 @@ async def handler(websocket):
     # Receive and parse the "init" event from the UI.
     message = await websocket.recv()
     event = json.loads(message)
-    assert event["type"] == "init"
+    assert event["type"] == "init", f'Received type {event["type"]} instead of init'
 
     if "join" in event:
         # Second player joins an existing game.
@@ -175,14 +175,18 @@ async def play(websocket, game, player, connected):
 
 
 async def main():
-    # Set the stop condition when receiving SIGTERM.
-    loop = asyncio.get_running_loop()
-    stop = loop.create_future()
-    loop.add_signal_handler(signal.SIGTERM, stop.set_result, None)
+    if 'ON_HEROKU' in os.environ:
+        # Set the stop condition when receiving SIGTERM.
+        loop = asyncio.get_running_loop()
+        stop = loop.create_future()
+        loop.add_signal_handler(signal.SIGTERM, stop.set_result, None)
 
-    port = int(os.environ.get("PORT", "8001"))
-    async with websockets.serve(handler, "", port):
-        await stop
+        port = int(os.environ.get("PORT", "8001"))
+        async with websockets.serve(handler, "", port):
+            await stop
+    else:
+        async with websockets.serve(handler, "", 8001):
+            await asyncio.Future()  # run forever
 
 
 if __name__ == "__main__":
