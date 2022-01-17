@@ -126,16 +126,27 @@ async def handler(websocket):
     # Receive and parse the "init" event from the UI.
     message = await websocket.recv()
     event = json.loads(message)
-    assert event["type"] == "init", f'Received type {event["type"]} instead of init'
+    if(event["type"] == "init"):
+        if "join" in event:
+            # Second player joins an existing game.
+            await join(websocket, event["join"])
+        elif "watch" in event:
+            await watch(websocket, event["watch"])
+        else:
+            # First player starts a new game.
+            await start(websocket)
+    elif(event["type"] == "play"):
+        # received play event instead of init. This happens when websocket disconnects during a game
+        reconnectPlay(websocket, event)
 
-    if "join" in event:
-        # Second player joins an existing game.
-        await join(websocket, event["join"])
-    elif "watch" in event:
-        await watch(websocket, event["watch"])
-    else:
-        # First player starts a new game.
-        await start(websocket)
+
+async def reconnectPlay(websocket, event):
+    join_key = event["gameId"]
+    player = event["player"]
+    game, connected = JOIN[join_key]
+    print(f"{player} reconnected to the game", id(game))
+    await replay(websocket, game)
+    await play(websocket, game, player, connected)
 
 
 async def play(websocket, game, player, connected):

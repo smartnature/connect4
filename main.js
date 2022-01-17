@@ -24,7 +24,7 @@ function initGame(websocket) {
       // Second player joins an existing game.
       event.join = params.get("join");
       document.querySelector(".join").href = "?join=" + params.get("join");
-      player = "yellow"
+      player = "PLAYER2"
     } else if (params.has("watch")) {
       event.watch = params.get("watch");
     } else {
@@ -66,7 +66,7 @@ function receiveMoves(board, websocket) {
         document.querySelector(".join").href = "?join=" + event.join;
         document.querySelector(".watch").href = "?watch=" + event.watch;
         gameId = event.join;
-        player = "red";
+        player = "PLAYER1";
         break;
       case "play":
         // Update the UI with the move.
