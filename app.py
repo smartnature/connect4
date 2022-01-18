@@ -137,53 +137,60 @@ async def handler(websocket):
             await start(websocket)
     elif(event["type"] == "play"):
         # received play event instead of init. This happens when websocket disconnects during a game
-        reconnectPlay(websocket, event)
+        await reconnectPlay(websocket, event)
 
 
 async def reconnectPlay(websocket, event):
     join_key = event["gameId"]
     player = event["player"]
+
     game, connected = JOIN[join_key]
     print(f"{player} reconnected to the game", id(game))
     await replay(websocket, game)
-    await play(websocket, game, player, connected)
+    await play(websocket, game, player, connected, event)
 
 
-async def play(websocket, game, player, connected):
+async def play(websocket, game, player, connected, inEvent = None):
 
     print("Play function started")
 
+    if(inEvent):
+        await playMessage(inEvent, game, player, connected, websocket)
+
     async for message in websocket:
-        # Parse a "play" event from the UI.
         event = json.loads(message)
-        assert event["type"] == "play"
-        column = event["column"]
+        await playMessage(event, game, player, connected, websocket)
 
-        try:
-            # Play the move.
-            row = game.play(player, column)
-        except RuntimeError as exc:
-            # Send an "error" event if the move was illegal.
-            await error(websocket, str(exc))
-            continue
 
-        # Send a "play" event to update the UI.
+async def playMessage(event, game, player, connected, websocket):
+    # Parse a "play" event from the UI.
+    assert event["type"] == "play"
+    column = event["column"]
+
+    try:
+        # Play the move.
+        row = game.play(player, column)
+    except RuntimeError as exc:
+        # Send an "error" event if the move was illegal.
+        await error(websocket, str(exc))
+        return
+
+    # Send a "play" event to update the UI.
+    event = {
+        "type": "play",
+        "player": player,
+        "column": column,
+        "row": row
+    }
+    websockets.broadcast(connected, json.dumps(event))
+
+    # If move is winning, send a "win" event.
+    if game.winner is not None:
         event = {
-            "type": "play",
-            "player": player,
-            "column": column,
-            "row": row
+            "type": "win",
+            "player": game.winner
         }
         websockets.broadcast(connected, json.dumps(event))
-
-        # If move is winning, send a "win" event.
-        if game.winner is not None:
-            event = {
-                "type": "win",
-                "player": game.winner
-            }
-            websockets.broadcast(connected, json.dumps(event))
-
 
 async def main():
     if 'ON_HEROKU' in os.environ:
