@@ -49,6 +49,10 @@ function sendMoves(board, websocket) {
       gameId: gameId,
       player: player
     };
+    if(websocket.readyState != 1){
+        websocket = new WebSocket(getWebSocketServer());
+        receiveMoves(board, websocket);
+    }
     websocket.send(JSON.stringify(event));
   });
 }
