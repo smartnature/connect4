@@ -8,11 +8,16 @@ import secrets
 import os
 import signal
 import watchdog
+from inspect import currentframe, getframeinfo
+import sys
 
 
 JOIN = {}
 WATCH = {}
 DELETE_TIMERS = {}
+
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
 
 async def start(websocket):
     # Initialize a Connect Four game, the set of WebSocket connections
@@ -40,18 +45,18 @@ async def start(websocket):
         }
         await websocket.send(json.dumps(event))
 
-        print("first player started game", id(game))
-        await play(websocket, game, PLAYER1, connected)
+        print(f"first player started game {join_key}")
 
     except Exception as e:
-        print(f"An exception occurred: {e}")
+        frameinfo = getframeinfo(currentframe())
+        eprint(f"An exception of type {type(e)} occurred: {e} \n{frameinfo.filename}, {frameinfo.lineno}")
 
-    finally:
-        print (f"Setting timer to delete JOIN[join_key], where join_key value is {join_key}")
+    #finally:
+        # Todo : find the right place to delete the game.
         # Do not delete it right away to get a chance to reconnect.
-        DELETE_TIMERS[join_key] = \
-            watchdog.Watchdog(timeout = 15*60, userHandler = lambda join_key = join_key,
-                                                        watch_key = watch_key : cleanupClosedSocket(join_key, watch_key))
+        #DELETE_TIMERS[join_key] = \
+        #    watchdog.Watchdog(timeout = 15*60, userHandler = lambda join_key = join_key,
+        #                                                watch_key = watch_key : cleanupClosedSocket(join_key, watch_key))
 
 
 def cleanupClosedSocket(join_key, watch_key):
@@ -92,13 +97,9 @@ async def watch(websocket, watch_key):
 
     # Register to receive moves from this game.
     connected.add(websocket)
-    try:
-        print("Watching game", id(game))
-        await replay(websocket, game)
-        await websocket.wait_closed()
 
-    finally:
-        connected.remove(websocket)
+    print(f"Watching game {watch_key}")
+    await replay(websocket, game)
 
 
 async def join(websocket, join_key):
@@ -113,53 +114,75 @@ async def join(websocket, join_key):
 
     # Register to receive moves from this game.
     connected.add(websocket)
-    try:
-        print("second player joined game", id(game))
-        await replay(websocket, game)
-        await play(websocket, game, PLAYER2, connected)
 
-    finally:
-        connected.remove(websocket)
+    print(f"Second player joined game {join_key}")
+    await replay(websocket, game)
 
 
 async def handler(websocket):
     # Receive and parse the "init" event from the UI.
-    message = await websocket.recv()
-    event = json.loads(message)
-    if(event["type"] == "init"):
-        if "join" in event:
-            # Second player joins an existing game.
-            await join(websocket, event["join"])
-        elif "watch" in event:
-            await watch(websocket, event["watch"])
-        else:
-            # First player starts a new game.
-            await start(websocket)
-    elif(event["type"] == "play"):
-        # received play event instead of init. This happens when websocket disconnects during a game
-        await reconnectPlay(websocket, event)
+    try:
+        async for message in websocket:
+            event = json.loads(message)
+
+            if(event["type"] == "init"):
+                if "join" in event:
+                    # Second player joins an existing game.
+                    await join(websocket, event["join"])
+                elif "watch" in event:
+                    await watch(websocket, event["watch"])
+                else:
+                    # First player starts a new game.
+                    await start(websocket)
+            elif (event["type"] == "replay"):
+                print("Received replay event")
+                await replayFromEvent(websocket, event)
+
+            elif(event["type"] == "play"):
+                # received play event
+                print("Received play event")
+                await play(websocket, event)
+
+    except websockets.exceptions.ConnectionClosedError:
+        pass
+    except Exception as e:
+        frameinfo = getframeinfo(currentframe())
+        eprint(f"An exception of type {type(e)} occurred: {e} \n{frameinfo.filename}, {frameinfo.lineno}")
 
 
-async def reconnectPlay(websocket, event):
+async def  replayFromEvent(websocket, event):
+    join_key = event["gameId"]
+    try:
+        game, connected = JOIN[join_key]
+    except KeyError:
+        await error(websocket, "Game not found.")
+        eprint(f"Event: {event}")
+        eprint(f"join_key: {join_key}")
+        eprint(f"JOIN: {JOIN}")
+        return
+
+    connected.add(websocket)
+    await replay(websocket, game)
+
+
+async def play(websocket, event):
+
     join_key = event["gameId"]
     player = event["player"]
 
-    game, connected = JOIN[join_key]
-    print(f"{player} reconnected to the game", id(game))
+    try:
+        game, connected = JOIN[join_key]
+    except KeyError:
+        await error(websocket, "Game not found.")
+        eprint(f"Event: {event}")
+        eprint(f"join_key: {join_key}")
+        eprint(f"JOIN: {JOIN}")
+        return
+
+    connected.add(websocket)
+
     await replay(websocket, game)
-    await play(websocket, game, player, connected, event)
-
-
-async def play(websocket, game, player, connected, inEvent = None):
-
-    print("Play function started")
-
-    if(inEvent):
-        await playMessage(inEvent, game, player, connected, websocket)
-
-    async for message in websocket:
-        event = json.loads(message)
-        await playMessage(event, game, player, connected, websocket)
+    await playMessage(event, game, player, connected, websocket)
 
 
 async def playMessage(event, game, player, connected, websocket):
@@ -182,6 +205,7 @@ async def playMessage(event, game, player, connected, websocket):
         "column": column,
         "row": row
     }
+    print("Sending play event to update UI")
     websockets.broadcast(connected, json.dumps(event))
 
     # If move is winning, send a "win" event.

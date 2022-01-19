@@ -37,9 +37,7 @@ function playMove(board, player, column, row) {
     throw new RangeError("row must be between 0 and 5.");
   }
   // Place checker in cell.
-  if (!cellElement.classList.replace("empty", player)) {
-    throw new Error("cell must be empty.");
-  }
+  cellElement.classList.replace("empty", player)
 }
 
 export { PLAYER1, PLAYER2, createBoard, playMove };
